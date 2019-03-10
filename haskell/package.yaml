@@ -1,0 +1,23 @@
+name:                async-futures-talk
+version:             0.1.0
+github:              "chicagohaskell/async-futures-talk"
+license:             BSD3
+author:              "Matthew Wraith"
+maintainer:          "wraithm@gmail.com"
+copyright:           "2019 Matthew Wraith"
+
+dependencies:
+  - base >= 4.7 && < 5
+
+library:
+  source-dirs: src
+
+executables:
+  example:
+    main: Main.hs
+    ghc-options:
+      - -threaded
+      - -rtsopts
+      - -with-rtsopts=-N
+    dependencies:
+      - async-futures-talk
