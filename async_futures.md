@@ -58,10 +58,23 @@ futures-rs uses macros, and async relies on Haskell's STM runtime.
 
 ### API comparison
 
+```haskell
+Async a
+instance Functor Async
+
+async  :: IO a -> IO (Async a)
+wait   :: Async a -> IO a
+poll   :: Async a -> IO (Maybe (Either SomeException a))
+cancel :: Async a -> IO ()
+```
+
+---
+
 map concurrently:
 
 ```haskell
-mapConcurrently :: Traversible t => (a -> IO b) -> t a -> IO (t b)
+mapConcurrently :: Traversible t
+                => (a -> IO b) -> t a -> IO (t b)
 ```
 
 race:
@@ -72,6 +85,7 @@ race :: IO a -> IO b -> IO (Either a b)
 
 errors:
 
+TODO
 
 ---
 
@@ -88,7 +102,7 @@ main = do
 ### HTTP client fetches
 
 ```haskell
-main = mapConcurrently get url >>= mapM_ print
+main = mapConcurrently get urls >>= mapM_ print
 ```
 
 ---
