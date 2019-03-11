@@ -63,7 +63,7 @@ acceptApp conn app = do
     app req respond
     close conn
   where
-    respond = sendAll conn . responseString . closeResponse
+    respond = sendAll conn . responseString
 
 
 open :: HostAddress -> PortNumber -> IO Socket
@@ -93,10 +93,6 @@ requestParser reqBS = Request u m hdrs bdy
     linebreak = "\r\n\r\n"
 
 
-closeResponse :: Response a -> Response a
-closeResponse = addHeader $ mkHeader HdrConnection "close"
-
-
 addHeader :: Header -> Response a -> Response a
 addHeader hdr resp = resp { rspHeaders = hdr : rspHeaders resp }
 
@@ -106,7 +102,9 @@ responseString resp = BS.pack (show fmtedResp) <> bdy
   where
     bdy    = toResponseBody (rspBody resp)
     bdyLen = BS.length bdy
-    fmtedResp = addHeader (mkHeader HdrContentLength $ show bdyLen) resp
+    contentLength = addHeader $ mkHeader HdrContentLength $ show bdyLen
+    closeResponse = addHeader $ mkHeader HdrConnection "close"
+    fmtedResp = closeResponse $ contentLength resp
 
 
 class FromRequest a where
