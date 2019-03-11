@@ -14,11 +14,11 @@ import           Network.Socket.ByteString
 import           Network.URI
 
 
-type Application a b = Request a -> IO (Async (Response b))
+type Application a b = Request a -> IO (Response b)
 
 
 fileServer :: Application a ByteString
-fileServer req = async $ fetchFile `catch` handleError
+fileServer req = fetchFile `catch` handleError
   where
     -- Warning: Horrendously insecure
     path = "." <> uriPath (rqURI req)
@@ -60,7 +60,7 @@ acceptLoop app sock = forever $ do
 acceptApp :: (FromRequest a, ToResponse b) => Socket -> Application a b -> IO ()
 acceptApp conn app = do
     req <- requestParser <$> recv conn 4096
-    respond =<< wait =<< app req
+    respond =<< app req
     close conn
   where
     respond = sendAll conn . responseString
