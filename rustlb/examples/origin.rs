@@ -30,8 +30,9 @@ fn main() -> io::Result<()> {
         println!("Listening on 127.0.0.1:7878");
 
         while let Some(stream) = await!(incoming.next()) {
+            println!("Got request");
             let stream = stream?;
-                await!(recite_shakespeare(stream)).unwrap();
+            await!(recite_shakespeare(stream)).unwrap();
         }
 
         Ok(())

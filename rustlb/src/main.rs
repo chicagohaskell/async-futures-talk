@@ -42,15 +42,27 @@ fn main() -> io::Result<()> {
 
 async fn load_balance(mut stream: TcpStream, upstream: &str) -> io::Result<()> {
     let mut upstream = await!(TcpStream::connect(&upstream.parse().unwrap()))?;
+    let mut buf = Vec::with_capacity(100);
 
     println!("Making requst");
 
-    // Make request to upstream
-    await!(stream.copy_into(&mut upstream))?;
+    // Read into buffer
+    let read = await!(stream.read_exact(&mut buf))?;
 
-    println!("Request made");
+    println!("Got request: {:?}, {:?}", read, buf);
+
+    // Make request
+    await!(upstream.write_all(&buf))?;
+
+    // Clear the buffer
+    buf.clear();
+
+    // Read the response from upstream
+    let read = await!(upstream.read_to_end(&mut buf))?;
+
+    println!("Got response: {:?} {:?}", read, buf);
 
     // write response back
-    await!(upstream.copy_into(&mut stream))?;
+    await!(stream.write_all(&buf))?;
     Ok(())
 }
