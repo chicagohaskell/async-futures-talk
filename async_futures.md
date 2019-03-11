@@ -65,7 +65,19 @@ instance Functor Async
 async  :: IO a -> IO (Async a)
 wait   :: Async a -> IO a
 poll   :: Async a -> IO (Maybe (Either SomeException a))
-cancel :: Async a -> IO ()
+```
+
+Use `await!` macro to wait on `Future`.
+
+```rust
+pub enum Poll<T> {
+    Ready(T),
+    Pending,
+}
+pub trait Future {
+    type Output;
+    fn poll(self: Pin<&mut Self>, waker: &Waker) -> Poll<Self::Output>;
+}
 ```
 
 ---
@@ -77,41 +89,21 @@ mapConcurrently :: Traversible t
                 => (a -> IO b) -> t a -> IO (t b)
 ```
 
-race:
+---
 
-```haskell
-race :: IO a -> IO b -> IO (Either a b)
-```
+### File web server
 
-errors:
-
-TODO
+TODO full example
 
 ---
 
-### Socket server
+### Web crawler
 
 ```haskell
-main = do
-    sock <- listen
-    forever . async $ accept sock
+main = mapConcurrently get urls >>= concat >>= print
 ```
 
 ---
-
-### HTTP client fetches
-
-```haskell
-main = mapConcurrently get urls >>= mapM_ print
-```
-
----
-
-### File IO
-
-```haskell
-main = mapConcurrently readFile files >>= mapM_ print
-```
 
 ## Summary
 
