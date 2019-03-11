@@ -3,4 +3,4 @@ module Main where
 import           AsyncTalk
 
 main :: IO ()
-main = someFunc
+main = runBS 8000 fileServer

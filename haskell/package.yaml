@@ -8,6 +8,11 @@ copyright:           "2019 Matthew Wraith"
 
 dependencies:
   - base >= 4.7 && < 5
+  - async
+  - bytestring
+  - HTTP
+  - network
+  - network-uri
 
 library:
   source-dirs: src
