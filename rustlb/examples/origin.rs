@@ -4,7 +4,7 @@ use std::io;
 
 use futures::StreamExt;
 use futures::executor;
-use futures::io::AsyncWriteExt;
+use futures::io::{AsyncWriteExt, AsyncReadExt};
 
 use rand::seq::SliceRandom;
 
@@ -33,6 +33,7 @@ fn main() -> io::Result<()> {
             println!("Got request");
             let stream = stream?;
             await!(recite_shakespeare(stream)).unwrap();
+            println!("closing stream");
         }
 
         Ok(())
@@ -41,7 +42,8 @@ fn main() -> io::Result<()> {
 
 async fn recite_shakespeare(mut stream: TcpStream) -> io::Result<()> {
     //stream.set_keepalive(None);
-    let &quote = SHAKESPEARE.choose(&mut rand::thread_rng()).unwrap();
-    await!(stream.write_all(quote))?;
+    // let &quote = SHAKESPEARE.choose(&mut rand::thread_rng()).unwrap();
+    let (mut reader, mut writer) = stream.split();
+    await!(reader.copy_into(&mut writer))?;
     Ok(())
 }
