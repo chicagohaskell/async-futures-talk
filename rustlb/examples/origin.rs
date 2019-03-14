@@ -2,12 +2,12 @@
 
 use std::io;
 
+use futures::executor::{self, ThreadPool};
+use futures::prelude::*;
+use futures::task::SpawnExt;
 use futures::StreamExt;
-use futures::executor;
-use futures::io::{AsyncWriteExt, AsyncReadExt};
 
 use rand::seq::SliceRandom;
-
 use romio::{TcpListener, TcpStream};
 
 const SHAKESPEARE: &[&[u8]] = &[
@@ -22,28 +22,51 @@ const SHAKESPEARE: &[&[u8]] = &[
 ];
 
 fn main() -> io::Result<()> {
-    executor::block_on(async {
+    executor::block_on(
+        async move {
+            let mut threadpool = ThreadPool::new()?;
 
-        let mut listener = TcpListener::bind(&"127.0.0.1:7878".parse().unwrap())?;
-        let mut incoming = listener.incoming();
+            let mut listener = TcpListener::bind(&"127.0.0.1:7878".parse().unwrap())?;
+            let mut incoming = listener.incoming();
 
-        println!("Listening on 127.0.0.1:7878");
+            println!("Listening on 127.0.0.1:7878");
 
-        while let Some(stream) = await!(incoming.next()) {
-            println!("Got request");
-            let stream = stream?;
-            await!(recite_shakespeare(stream)).unwrap();
-            println!("closing stream");
-        }
+            while let Some(stream) = await!(incoming.next()) {
+                let stream = stream?;
+                let addr = stream.peer_addr()?;
 
-        Ok(())
-    })
+                threadpool
+                    .spawn(
+                        async move {
+                            println!("Accepting stream from: {}", addr);
+
+                            // Panic on error
+                            await!(recite_shakespeare(stream)).unwrap();
+
+                            println!("Closing stream from: {}", addr);
+                        },
+                    )
+                    .unwrap();
+            }
+
+            Ok(())
+        },
+    )
 }
 
 async fn recite_shakespeare(mut stream: TcpStream) -> io::Result<()> {
     //stream.set_keepalive(None);
-    // let &quote = SHAKESPEARE.choose(&mut rand::thread_rng()).unwrap();
-    let (mut reader, mut writer) = stream.split();
-    await!(reader.copy_into(&mut writer))?;
+    let &quote = SHAKESPEARE.choose(&mut rand::thread_rng()).unwrap();
+
+    // Construct the response
+    let mut response = format!(
+        "HTTP/1.1 200 OK\r\nContent-Length:{}\r\nContent-Type: text/ascii\r\n\r\n",
+        quote.len()
+    )
+    .into_bytes();
+
+    response.extend_from_slice(quote);
+
+    await!(stream.write_all(&response))?;
     Ok(())
 }
