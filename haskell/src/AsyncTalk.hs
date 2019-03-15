@@ -19,12 +19,12 @@ data Upstream = Upstream
     } deriving (Show, Eq)
 
 
-run :: PortNumber -> [Upstream] -> IO ()
-run port upstreams = withSocketsDo $ bracket (open localhost port) close (acceptLoop upstreams)
-
-
 localhost :: HostAddress
 localhost = tupleToHostAddress (127, 0, 0, 1)
+
+
+run :: PortNumber -> [Upstream] -> IO ()
+run port upstreams = withSocketsDo $ bracket (open localhost port) close (acceptLoop upstreams)
 
 
 acceptLoop :: [Upstream] -> Socket -> IO ()
@@ -35,10 +35,6 @@ acceptLoop upstreams sock = forever $ do
   where
     handleException :: Socket -> SomeException -> IO ()
     handleException conn e = print e >> close conn
-
-
-bufSize :: Int
-bufSize = 4096
 
 
 acceptConn :: [Upstream] -> Socket -> IO ()
@@ -57,7 +53,7 @@ oneOf xs = (xs !!) <$> randomRIO (0, length xs - 1)
 
 sendPeer :: ByteString -> Upstream -> IO ByteString
 sendPeer msg (Upstream host port) = do
-    sock <- socket ipv4AddressFamily Stream tcpProtocolNumber
+    sock <- tcpSocket
     connect sock addr
     sendAll sock msg
     recv sock bufSize
@@ -67,7 +63,7 @@ sendPeer msg (Upstream host port) = do
 
 open :: HostAddress -> PortNumber -> IO Socket
 open host port = do
-    sock <- socket ipv4AddressFamily Stream tcpProtocolNumber
+    sock <- tcpSocket
     setSocketOption sock ReuseAddr 1
     -- If the prefork technique is not used,
     -- set CloseOnExec for the security reasons.
@@ -80,9 +76,12 @@ open host port = do
     bindAddr = SockAddrInet port host
 
 
-tcpProtocolNumber :: ProtocolNumber
-tcpProtocolNumber = 6
+tcpSocket :: IO Socket
+tcpSocket = socket ipv4AddressFamily Stream tcpProtocolNumber
+  where
+    tcpProtocolNumber = 6
+    ipv4AddressFamily = AF_INET
 
 
-ipv4AddressFamily :: Family
-ipv4AddressFamily = AF_INET
+bufSize :: Int
+bufSize = 4096
