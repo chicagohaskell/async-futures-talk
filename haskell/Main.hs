@@ -1,6 +1,6 @@
 module Main where
 
-import           LoadBalancer
+import           ChatServer
 
 main :: IO ()
-main = run 8000 [Upstream localhost 7878, Upstream localhost 7879]
+main = run 8000
