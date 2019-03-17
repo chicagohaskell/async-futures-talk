@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module AsyncTalk where
+module LoadBalancer where
 
 import           Control.Concurrent.Async
 import           Control.Exception
