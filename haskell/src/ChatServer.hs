@@ -73,11 +73,14 @@ receiveClient (ClientState conn peer msgAsync) = do
 
 
 broadcastMsg :: SockAddr -> ByteString -> [ClientState] -> IO ()
-broadcastMsg from msg = mapM_ sendClient
+broadcastMsg from msg clients = do
+    BS.putStrLn fromMsg
+    mapM_ sendClient clients
   where
+    fromMsg = BS.pack (show from) <> ": " <> msg
     sendClient clientState
         | from == clientAddr clientState = return ()
-        | otherwise = sendAll (connection clientState) (BS.pack (show from) <> ": " <> msg)
+        | otherwise = sendAll (clientConn clientState) fromMsg
 
 
 open :: HostAddress -> PortNumber -> IO Socket
