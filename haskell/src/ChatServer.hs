@@ -21,7 +21,7 @@ run port = withSocketsDo $ bracket (open localhost port) close server
 
 
 data ClientState = ClientState
-    { connection :: Socket
+    { clientConn :: Socket
     , clientAddr :: SockAddr
     , clientMsg  :: Async (ByteString, SockAddr)
     }
@@ -51,17 +51,15 @@ acceptClient sock = do
     (conn, peer) <- accept sock
     putStrLn $ "Connection from: " <> show peer
     return (conn, peer)
-  where
-    handleException :: Socket -> SomeException -> IO ()
-    handleException conn e = print e >> close conn
 
 
 newClientState :: (Socket, SockAddr) -> IO ClientState
 newClientState (conn, peer) = ClientState conn peer <$> async (recvFrom conn bufSize)
+  where bufSize = 4096
 
 
 replaceClient :: Async (ByteString, SockAddr) -> [ClientState] -> IO [ClientState]
-replaceClient msgAsync = traverse replaceMsgAsync
+replaceClient msgAsync = mapM replaceMsgAsync
   where
     replaceMsgAsync clientState
         | msgAsync == clientMsg clientState = receiveClient clientState
@@ -95,14 +93,6 @@ open host port = do
     return sock
   where
     bindAddr = SockAddrInet port host
-
-
-tcpSocket :: IO Socket
-tcpSocket = socket ipv4AddressFamily Stream tcpProtocolNumber
-  where
+    tcpSocket = socket ipv4AddressFamily Stream tcpProtocolNumber
     tcpProtocolNumber = 6
     ipv4AddressFamily = AF_INET
-
-
-bufSize :: Int
-bufSize = 4096
