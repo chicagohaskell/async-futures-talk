@@ -34,14 +34,14 @@ server sock = do
   where
     go clients = do
         newClient <- async $ acceptClient sock
-        nextMessage <- async $ waitAny $ map clientMsg clients
-        waitEitherCancel newClient nextMessage >>= clientOrMessage clients
-    -- TODO Handle exceptions (ie. disconnections)
-    clientOrMessage clients (Right (msgAsync, (msg, fromClient))) = do
+        nextMessage <- async $ waitAnyCatch $ map clientMsg clients
+        waitEitherCancel newClient nextMessage >>= connectOrMessage clients
+    connectOrMessage clients (Right (msgAsync, Right (msg, fromClient))) = do
         broadcastMsg fromClient msg clients
-        newClients <- replaceClient msgAsync clients
-        go newClients
-    clientOrMessage clients (Left newConn) = do
+        go =<< replaceClient msgAsync clients
+    connectOrMessage clients (Right (msgAsync, Left _)) =
+        go =<< removeClient msgAsync clients
+    connectOrMessage clients (Left newConn) = do
         client <- newClientState newConn
         go (client:clients)
 
@@ -64,6 +64,17 @@ replaceClient msgAsync = mapM replaceMsgAsync
     replaceMsgAsync clientState
         | msgAsync == clientMsg clientState = receiveClient clientState
         | otherwise = return clientState
+
+
+removeClient :: Async (ByteString, SockAddr) -> [ClientState] -> IO [ClientState]
+removeClient msgAsync clients = filterM notFindClient clients
+  where
+    notFindClient clientState
+        | msgAsync == clientMsg clientState = do
+            close (clientConn clientState)
+            broadcastMsg (clientAddr clientState) "quitting...\n" clients
+            return False
+        | otherwise = return True
 
 
 receiveClient :: ClientState -> IO ClientState
