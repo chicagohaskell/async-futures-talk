@@ -1,6 +1,6 @@
 module Main where
 
-import           AsyncTalk
+import           ChatServer
 
 main :: IO ()
-main = runBS 8000 fileServer
+main = run 8000
