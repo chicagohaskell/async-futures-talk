@@ -1,229 +1,156 @@
-use std::collections::HashMap;
-use std::net::SocketAddr;
-use std::sync::{Arc, Mutex};
+//! A chat server that broadcasts a message to all connections.
+//!
+//! This is a line-based server which accepts connections, reads lines from
+//! those connections, and broadcasts the lines to all other connected clients.
+//!
+//! This example is similar to chat.rs, but uses combinators and a much more
+//! functional style.
+//!
+//! You can test this out by running:
+//!
+//!     cargo run --example chat
+//!
+//! And then in another window run:
+//!
+//!     cargo run --example connect 127.0.0.1:8080
+//!
+//! You can run the second command in multiple windows and then chat between the
+//! two, seeing the messages from the other client as they're received. For all
+//! connected clients they'll all join the same room and see everyone else's
+//! messages.
 
-use bytes::{BufMut, Bytes, BytesMut};
-use futures::future::{self, Either};
-use futures::sync::mpsc;
-use futures::try_ready;
+#![deny(warnings)]
+
+extern crate futures;
+extern crate tokio;
+
 use tokio::io;
-use tokio::net::{TcpListener, TcpStream};
+use tokio::net::TcpListener;
 use tokio::prelude::*;
 
-type Tx = mpsc::UnboundedSender<Bytes>;
+use std::collections::HashMap;
+use std::env;
+use std::io::BufReader;
+use std::iter;
+use std::sync::{Arc, Mutex};
 
-type Rx = mpsc::UnboundedReceiver<Bytes>;
+fn main() -> Result<(), Box<std::error::Error>> {
+    // Create the TCP listener we'll accept connections on.
+    let addr = env::args().nth(1).unwrap_or("127.0.0.1:8080".to_string());
+    let addr = addr.parse()?;
 
-// A client will iterate over all peers and send messages over the Tx
-// to broadcast messages.
-struct Shared {
-    peers: HashMap<SocketAddr, Tx>,
-}
+    let socket = TcpListener::bind(&addr)?;
+    println!("Listening on: {}", addr);
 
-struct Peer {
-    name: BytesMut,
-    lines: Lines,
-    state: Arc<Mutex<Shared>>,
-    rx: Rx,
-    addr: SocketAddr,
-}
+    // This is running on the Tokio runtime, so it will be multi-threaded. The
+    // `Arc<Mutex<...>>` allows state to be shared across the threads.
+    let connections = Arc::new(Mutex::new(HashMap::new()));
 
-#[derive(Debug)]
-struct Lines {
-    socket: TcpStream,
-    read: BytesMut,
-    write: BytesMut,
-}
-
-impl Shared {
-    fn new() -> Self {
-        Shared {
-            peers: HashMap::new(),
-        }
-    }
-}
-
-impl Peer {
-    fn new(name: BytesMut, state: Arc<Mutex<Shared>>, lines: Lines) -> Peer {
-        let addr = lines.socket.peer_addr().unwrap();
-        let (tx, rx) = mpsc::unbounded();
-
-        state.lock().unwrap().peers.insert(addr, tx);
-
-        Peer {
-            name,
-            lines,
-            rx,
-            state,
-            addr,
-        }
-    }
-}
-
-impl Future for Peer {
-    type Item = ();
-    type Error = io::Error;
-
-    fn poll(&mut self) -> Poll<(), io::Error> {
-        const LINES_PER_TICK: usize = 10;
-
-        for i in 0..LINES_PER_TICK {
-            match self.rx.poll().unwrap() {
-                Async::Ready(Some(v)) => {
-                    self.lines.buffer(&v);
-
-                    if i + 1 == LINES_PER_TICK {
-                        task::current().notify();
-                    }
-                }
-                _ => break,
-            }
-        }
-
-        let _ = self.lines.poll_flush()?;
-
-        while let Async::Ready(line) = self.lines.poll()? {
-            println!("Received line ({:?}): {:?}", self.name, line);
-
-            if let Some(message) = line {
-                let mut line = self.name.clone();
-                line.extend_from_slice(b": ");
-                line.extend_from_slice(&message);
-                line.extend_from_slice(b"\r\n");
-
-                let line = line.freeze();
-
-                for (addr, tx) in &self.state.lock().unwrap().peers {
-                    if *addr != self.addr {
-                        tx.unbounded_send(line.clone()).unwrap();
-                    }
-                }
-            } else {
-                return Ok(Async::Ready(()));
-            }
-        }
-
-        Ok(Async::NotReady)
-    }
-}
-
-impl Lines {
-    fn new(socket: TcpStream) -> Self {
-        Lines {
-            socket,
-            read: BytesMut::new(),
-            write: BytesMut::new(),
-        }
-    }
-
-    fn buffer(&mut self, line: &[u8]) {
-        self.write.reserve(line.len());
-
-        self.write.put(line);
-    }
-
-    fn poll_flush(&mut self) -> Poll<(), io::Error> {
-        while !self.write.is_empty() {
-            let n = try_ready!(self.socket.poll_write(&self.write));
-
-            assert!(n > 0);
-
-            let _ = self.write.split_to(n);
-        }
-
-        Ok(Async::Ready(()))
-    }
-
-    fn fill_read_buf(&mut self) -> Poll<(), io::Error> {
-        loop {
-            self.read.reserve(1024);
-
-            let n = try_ready!(self.socket.read_buf(&mut self.read));
-
-            if n == 0 {
-                return Ok(Async::Ready(()));
-            }
-        }
-    }
-}
-
-impl Stream for Lines {
-    type Item = BytesMut;
-    type Error = io::Error;
-
-    fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
-        let sock_closed = self.fill_read_buf()?.is_ready();
-
-        let pos = self
-            .read
-            .windows(2)
-            .enumerate()
-            .find(|&(_, bytes)| bytes == b"\r\n")
-            .map(|(i, _)| i);
-
-        if let Some(pos) = pos {
-            let mut line = self.read.split_to(pos + 2);
-            line.split_off(pos);
-
-            return Ok(Async::Ready(Some(line)));
-        }
-
-        if sock_closed {
-            Ok(Async::Ready(None))
-        } else {
-            Ok(Async::NotReady)
-        }
-    }
-}
-
-fn process(socket: TcpStream, state: Arc<Mutex<Shared>>) {
-    println!("Processing a client: {:?}", socket.peer_addr().unwrap());
-    let lines = Lines::new(socket);
-
-    let connection = lines
-        .into_future()
-        .map_err(|(e, _)| e)
-        // First line is treated as the name for the client.
-        .and_then(|(name, lines)| {
-            let name = match name {
-                Some(name) => name,
-                None => {
-                    return Either::A(future::ok(()));
-                }
-            };
-
-            println!("`{:?}` if joining the chat", name);
-
-            let peer = Peer::new(name, state, lines);
-
-            Either::B(peer)
-        })
-        .map_err(|e| {
-            println!("Connection error = {:?}", e);
-        });
-
-    tokio::spawn(connection);
-}
-
-pub fn main() -> Result<(), Box<std::error::Error>> {
-    let state = Arc::new(Mutex::new(Shared::new()));
-
-    let addr = "127.0.0.1:8000".parse()?;
-
-    let listener = TcpListener::bind(&addr)?;
-
-    let server = listener
+    // The server task asynchronously iterates over and processes each incoming
+    // connection.
+    let srv = socket
         .incoming()
-        .for_each(move |socket| {
-            process(socket, state.clone());
+        .map_err(|e| {
+            println!("failed to accept socket; error = {:?}", e);
+            e
+        })
+        .for_each(move |stream| {
+            // The client's socket address
+            let addr = stream.peer_addr()?;
+
+            println!("New Connection: {}", addr);
+
+            // Split the TcpStream into two separate handles. One handle for reading
+            // and one handle for writing. This lets us use separate tasks for
+            // reading and writing.
+            let (reader, writer) = stream.split();
+
+            // Create a channel for our stream, which other sockets will use to
+            // send us messages. Then register our address with the stream to send
+            // data to us.
+            let (tx, rx) = futures::sync::mpsc::unbounded();
+            connections.lock().unwrap().insert(addr, tx);
+
+            // Define here what we do for the actual I/O. That is, read a bunch of
+            // lines from the socket and dispatch them while we also write any lines
+            // from other sockets.
+            let connections_inner = connections.clone();
+            let reader = BufReader::new(reader);
+
+            // Model the read portion of this socket by mapping an infinite
+            // iterator to each line off the socket. This "loop" is then
+            // terminated with an error once we hit EOF on the socket.
+            let iter = stream::iter_ok::<_, io::Error>(iter::repeat(()));
+
+            let socket_reader = iter.fold(reader, move |reader, _| {
+                // Read a line off the socket, failing if we're at EOF
+                let line = io::read_until(reader, b'\n', Vec::new());
+                let line = line.and_then(|(reader, vec)| {
+                    if vec.len() == 0 {
+                        Err(io::Error::new(io::ErrorKind::BrokenPipe, "broken pipe"))
+                    } else {
+                        Ok((reader, vec))
+                    }
+                });
+
+                // Convert the bytes we read into a string, and then send that
+                // string to all other connected clients.
+                let line = line.map(|(reader, vec)| (reader, String::from_utf8(vec)));
+
+                // Move the connection state into the closure below.
+                let connections = connections_inner.clone();
+
+                line.map(move |(reader, message)| {
+                    println!("{}: {:?}", addr, message);
+                    let mut conns = connections.lock().unwrap();
+
+                    if let Ok(msg) = message {
+                        // For each open connection except the sender, send the
+                        // string via the channel.
+                        let iter = conns
+                            .iter_mut()
+                            .filter(|&(&k, _)| k != addr)
+                            .map(|(_, v)| v);
+                        for tx in iter {
+                            tx.unbounded_send(format!("{}: {}", addr, msg)).unwrap();
+                        }
+                    } else {
+                        let tx = conns.get_mut(&addr).unwrap();
+                        tx.unbounded_send("You didn't send valid UTF-8.".to_string())
+                            .unwrap();
+                    }
+
+                    reader
+                })
+            });
+
+            // Whenever we receive a string on the Receiver, we write it to
+            // `WriteHalf<TcpStream>`.
+            let socket_writer = rx.fold(writer, |writer, msg| {
+                let amt = io::write_all(writer, msg.into_bytes());
+                let amt = amt.map(|(writer, _)| writer);
+                amt.map_err(|_| ())
+            });
+
+            // Now that we've got futures representing each half of the socket, we
+            // use the `select` combinator to wait for either half to be done to
+            // tear down the other. Then we spawn off the result.
+            let connections = connections.clone();
+            let socket_reader = socket_reader.map_err(|_| ());
+            let connection = socket_reader.map(|_| ()).select(socket_writer.map(|_| ()));
+
+            // Spawn a task to process the connection
+            tokio::spawn(connection.then(move |_| {
+                connections.lock().unwrap().remove(&addr);
+                println!("Connection {} closed.", addr);
+                Ok(())
+            }));
+
             Ok(())
         })
-        .map_err(|err| {
-            println!("accept error = {:?}", err);
-        });
+        .map_err(|err| println!("error occurred: {:?}", err));
 
-    println!("Server running on localhost:8000");
-
-    tokio::run(server);
+    // execute server
+    tokio::run(srv);
     Ok(())
 }
