@@ -2,13 +2,10 @@
 
 use std::io;
 
-use futures::executor::{self, ThreadPool};
-use futures::prelude::*;
-use futures::task::SpawnExt;
-use futures::StreamExt;
+use tokio::net::{TcpListener, TcpStream};
+use tokio::prelude::*;
 
 use rand::seq::SliceRandom;
-use romio::{TcpListener, TcpStream};
 
 const SHAKESPEARE: &[&[u8]] = &[
     b"Now is the winter of our discontent\nMade glorious summer by this sun of York.\n",
@@ -21,42 +18,39 @@ const SHAKESPEARE: &[&[u8]] = &[
     b"                  Each your doing,\nSo singular in each particular,\nCrowns what you are doing in the present deed,\nThat all your acts are queens.\n",
 ];
 
-fn main() -> io::Result<()> {
-    executor::block_on(
-        async move {
-            let mut threadpool = ThreadPool::new()?;
+fn main() {
+    let listener = TcpListener::bind(&"127.0.0.1:7878".parse().unwrap()).unwrap();
 
-            let mut listener = TcpListener::bind(&"127.0.0.1:7878".parse().unwrap())?;
+    tokio::run_async(
+        async {
             let mut incoming = listener.incoming();
 
             println!("Listening on 127.0.0.1:7878");
 
             while let Some(stream) = await!(incoming.next()) {
-                let stream = stream?;
-                let addr = stream.peer_addr()?;
+                let stream = stream.unwrap();
+                let addr = stream.peer_addr().unwrap();
 
-                threadpool
-                    .spawn(
-                        async move {
-                            println!("Accepting stream from: {}", addr);
+                println!("Accepting stream from: {}", addr);
 
-                            // Panic on error
-                            await!(recite_shakespeare(stream)).unwrap();
+                // Panic on error
+                await!(recite_shakespeare(stream)).unwrap();
 
-                            println!("Closing stream from: {}", addr);
-                        },
-                    )
-                    .unwrap();
+                println!("Closing stream from: {}", addr);
             }
-
-            Ok(())
         },
-    )
+    );
 }
 
 async fn recite_shakespeare(mut stream: TcpStream) -> io::Result<()> {
-    //stream.set_keepalive(None);
+
     let &quote = SHAKESPEARE.choose(&mut rand::thread_rng()).unwrap();
+
+    let mut buf = Vec::new();
+
+    await!(stream.read_async(&mut buf)).unwrap();
+
+    println!("Read bytes: {:?}", String::from_utf8(buf).unwrap());
 
     // Construct the response
     let mut response = format!(
@@ -67,6 +61,7 @@ async fn recite_shakespeare(mut stream: TcpStream) -> io::Result<()> {
 
     response.extend_from_slice(quote);
 
-    await!(stream.write_all(&response))?;
+    await!(stream.write_all_async(&response)).unwrap();
+
     Ok(())
 }
