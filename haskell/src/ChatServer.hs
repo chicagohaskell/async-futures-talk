@@ -36,14 +36,14 @@ server sock = do
         newClient <- async $ acceptClient sock
         nextMessage <- async $ waitAnyCatch $ map clientMsg clients
         waitEitherCancel newClient nextMessage >>= connectOrMessage clients
+    connectOrMessage clients (Left newConn) = do
+        client <- newClientState newConn
+        go (client:clients)
     connectOrMessage clients (Right (msgAsync, Right (msg, fromClient))) = do
         broadcastMsg fromClient msg clients
         go =<< replaceClient msgAsync clients
     connectOrMessage clients (Right (msgAsync, Left _)) =
         go =<< removeClient msgAsync clients
-    connectOrMessage clients (Left newConn) = do
-        client <- newClientState newConn
-        go (client:clients)
 
 
 acceptClient :: Socket -> IO (Socket, SockAddr)
