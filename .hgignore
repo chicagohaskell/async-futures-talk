@@ -4,3 +4,4 @@ syntax: regexp
 \.\#
 \.DS_Store$
 \.cabal$
+target/
