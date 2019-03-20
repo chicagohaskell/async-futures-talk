@@ -111,6 +111,7 @@ fn main() -> Result<(), Box<std::error::Error>> {
                             .iter_mut()
                             .filter(|&(&k, _)| k != addr)
                             .map(|(_, v)| v);
+
                         for tx in iter {
                             tx.unbounded_send(format!("{}: {}", addr, msg)).unwrap();
                         }
