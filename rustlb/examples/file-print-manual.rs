@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use tokio::fs::{file::MetadataFuture, file::OpenFuture, File};
 use tokio::io::{self, Copy, Stdout};
 use tokio::prelude::*;
@@ -11,36 +13,49 @@ enum CopyState<P> {
     Copying(Copy<File, Stdout>, u64),
 }
 
-struct CopyFuture<P> {
+struct CopyFuture<P>
+where
+    P: AsRef<Path> + Send + 'static,
+{
     state: CopyState<P>,
     out: Stdout,
 }
 
-impl<P> CopyFuture<P> {
+impl<P> CopyFuture<P>
+where
+    P: AsRef<Path> + Send + 'static,
+{
     fn new(state: CopyState<P>, out: Stdout) -> Self {
         Self { state, out }
     }
 }
 
-impl<P> Future for CopyFuture<P> {
+impl<P> Future for CopyFuture<P>
+where
+    P: AsRef<Path> + Send + 'static,
+{
     type Item = ();
     type Error = io::Error;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
         use self::CopyState::*;
 
-        // we loop because ?
+        // we loop because we can immediately start polling the next state, instead of being
+        // forgotten?
         loop {
             match self.state {
-                Opening(mut f) => {
-                    let file = try_ready!(f.poll());
-                    self.state = Parsing(file.metadata());
-                }
-                Parsing(mut m) => {
+                Opening(ref mut o) => match o.poll() {
+                    Ok(Async::Ready(file)) => {
+                        self.state = Parsing(file.metadata());
+                    }
+                    Ok(Async::NotReady) => return Ok(Async::NotReady),
+                    Err(e) => return Err(e),
+                },
+                Parsing(ref mut m) => {
                     let (file, metadata) = try_ready!(m.poll());
-                    self.state = Copying(io::copy(file, self.out), metadata.len());
+                    self.state = Copying(io::copy(file, io::stdout()), metadata.len());
                 }
-                Copying(mut c, size) => {
+                Copying(ref mut c, size) => {
                     let mut n = 0;
 
                     while n <= size {
