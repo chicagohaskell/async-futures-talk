@@ -5,13 +5,10 @@ fn main() {
     let task = tokio::fs::File::open("/Users/bigb/vimwiki/index.md")
         .and_then(|file| {
             // do something with the file ...
-            let task = copy(file, stdout())
-                .map(|(n, _, _)| {
-                    println!("Copied {} bytes", n);
-                })
-                .map_err(|err| println!("IO error: {:?}", err));
-
-            tokio::spawn(task);
+            copy(file, stdout())
+        })
+        .and_then(|(n, _, _)| {
+            println!("Printed {} bytes", n);
             Ok(())
         })
         .map_err(|e| {
