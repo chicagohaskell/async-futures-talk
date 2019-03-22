@@ -15,6 +15,7 @@ dependencies:
   - network-uri
   - random
   - io-streams
+  - unagi-streams
 
 library:
   source-dirs: src
