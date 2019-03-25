@@ -18,15 +18,14 @@ where
     P: AsRef<Path> + Send + 'static,
 {
     state: CopyState<P>,
-    out: Stdout,
 }
 
 impl<P> CopyFuture<P>
 where
     P: AsRef<Path> + Send + 'static,
 {
-    fn new(state: CopyState<P>, out: Stdout) -> Self {
-        Self { state, out }
+    fn new(state: CopyState<P>) -> Self {
+        Self { state }
     }
 }
 
