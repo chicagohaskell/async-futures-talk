@@ -1,0 +1,10 @@
+[package]
+name = "multi-http"
+version = "0.1.0"
+authors = ["Bhargav Voleti <bhargav.voleti93@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+hyper = "0.12"
+futures = "0.1"
+tokio = "0.1"
