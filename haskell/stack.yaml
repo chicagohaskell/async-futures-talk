@@ -1,3 +1,10 @@
 resolver: nightly-2019-03-10
 packages:
   - .
+  - location:
+      git: git://github.com/bitnomial/unagi-streams
+      commit: 818e3d45544dd649eb78b467d1ec769660b45a1a
+    extra-dep: true
+
+extra-deps:
+  - unagi-chan-0.4.1.0
