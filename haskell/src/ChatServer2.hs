@@ -4,11 +4,11 @@
 module ChatServer2 where
 
 import           Control.Concurrent.Async
-import           Control.Concurrent.STM
 import           Control.Exception
 import           Control.Monad
 import           Data.ByteString.Char8              (ByteString)
 import qualified Data.ByteString.Char8              as BS
+import           Data.IORef
 import           Data.Map.Strict                    (Map)
 import qualified Data.Map.Strict                    as M
 import           Network.Socket                     hiding (recv, recvFrom)
@@ -38,20 +38,20 @@ data Client = Client
     }
 
 
-newtype ConnectionState = ConnectionState (TVar (Map SockAddr Client))
+newtype ConnectionState = ConnectionState (IORef (Map SockAddr Client))
 
 
 newConnectionState :: IO ConnectionState
-newConnectionState = ConnectionState <$> newTVarIO mempty
+newConnectionState = ConnectionState <$> newIORef mempty
 
 
 allClients :: ConnectionState -> IO [Client]
-allClients (ConnectionState connVar) = M.elems <$> readTVarIO connVar
+allClients (ConnectionState connVar) = M.elems <$> readIORef connVar
 
 
 addClient :: ConnectionState -> Client -> IO ()
-addClient (ConnectionState connVar) client = atomically $
-    modifyTVar' connVar (M.insert (clientAddr client) client)
+addClient (ConnectionState connVar) client =
+    modifyIORef' connVar (M.insert (clientAddr client) client)
 
 
 server :: (InputStream (SockAddr, ByteString), OutputStream (SockAddr, ByteString)) -> ConnectionState -> Socket -> IO ()
