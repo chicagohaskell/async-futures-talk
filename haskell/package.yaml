@@ -16,6 +16,8 @@ dependencies:
   - random
   - io-streams
   - unagi-streams
+  - containers
+  - stm
 
 library:
   source-dirs: src
@@ -23,6 +25,15 @@ library:
 executables:
   example:
     main: Main.hs
+    ghc-options:
+      - -threaded
+      - -rtsopts
+      - -with-rtsopts=-N
+    dependencies:
+      - async-futures-talk
+
+  example2:
+    main: Main2.hs
     ghc-options:
       - -threaded
       - -rtsopts
