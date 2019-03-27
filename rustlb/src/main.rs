@@ -1,3 +1,6 @@
+//! This example is from the tokio docs:
+//! https://github.com/tokio-rs/tokio/blob/master/tokio/examples/chat-combinator.rs
+//!
 //! A chat server that broadcasts a message to all connections.
 //!
 //! This is a line-based server which accepts connections, reads lines from
